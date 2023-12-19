@@ -1,0 +1,343 @@
+---
+title: "Spotify Streams"
+author: "Audrey Chin, Katherine Pastva, and Tyler Mui"
+date: "Dec. 14th, 2023"
+output: 
+  prettydoc::html_pretty:
+    theme: leonids
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+What factors impacted the popularity of songs the most in 2023?
+
+*   Release month, Beats per Minute, in Spotify Playlists, or in Apple Playlists?
+
+This data can be important to artists who want to release music and have the highest probability of having their song reach millions of listeners.
+
+## Data
+The data was found on Kaggle, the largest data science community with powerful tools and datasets. This data set is titled *Most Streamed Spotify Songs 2023* with 953 original entries. It's a comprehensive list of the most streamed songs of 2023 as listed on Spotify. It contains attributes about each song including popularity, presence on various music platforms, and beats per minute, just to name a few.
+
+The main csv file was filtered into its respective X variable compared to streams, which we use a measure for song popularity.
+```{r loadspotify, echo=FALSE, include=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(dplyr)
+library(randomForest)
+library(vip)
+
+getwd()
+spotifyData = read_csv('../Data/spotify-2023.csv')
+#changing variable types of columns
+spotifyData$streams = as.integer(spotifyData$streams)
+spotifyData$bpm = as.integer(spotifyData$bpm)
+spotifyData$key = as.factor(spotifyData$key)
+#checking to make sure the new types are set
+class(spotifyData$streams)
+class(spotifyData$bpm)
+class(spotifyData$key)
+view(spotifyData)
+
+#remove any NAs
+new_spotify = spotifyData %>% 
+  na.omit
+#check to see if all NA's have been removed
+sum(is.na(new_spotify))
+```
+
+
+### Handling Missing Values
+The data was wrangled properly to show relationships to streams (popularity) within the data. All of the rows that included 'N/A' were negated so that there are no missing values within the main data frame. To do this, the `na.omit()` function was piped into final data manipulation. After this function was used, 799 observations remained, and these observations were used for exploratory data analysis and model building.
+
+## Visualizations
+
+```{r applePlaylists, echo=FALSE}
+ApplePlaylists_Streams = spotifyData %>% 
+  select(track_name,in_apple_playlists, streams) %>% 
+  na.omit()
+#you can see a positive correlation coefficient
+ApplePlaylists_Streams_Plot = ggplot(ApplePlaylists_Streams, aes(x = in_apple_playlists, y = streams)) +
+  scale_y_continuous(
+    breaks = seq(0,2500000000, by = 500000000),
+    labels = c("0","500M", "1B", "1.5B", "2B", "2.5B")) +
+  scale_x_continuous(breaks = seq(0,600, by = 100)) +
+  xlab("Counts in Apple Music Playlists") +
+  ylab("Streams") +
+  ggtitle("Streams When Found in an Apple Music Playlist") +
+  geom_point()
+
+x <- ApplePlaylists_Streams$in_apple_playlists 
+y <- ApplePlaylists_Streams$streams
+data <- data.frame(x, y)
+
+reg<-lm(formula = y ~ x, 
+        data=data)
+  
+#get intercept and slope value 
+coeff<-coefficients(reg)           
+intercept = 180017845 
+slope = 4603178  
+  
+# add the regression line 
+ApplePlaylists_Streams_Plot +
+  geom_abline(intercept = intercept, slope = slope, color="orange",  
+               linetype="dashed", linewidth=1)
+```
+
+This scatterplot displays a positive relationship between number of Apple music playlists the song is included in and the number of streams of the respective song. 
+
+
+```{r spotifyPlaylists, echo=FALSE}
+SpotifyPlaylists_Streams = spotifyData %>% 
+  select(track_name,in_spotify_playlists, streams) %>% 
+  na.omit()
+#you can see a positive correlation coefficient
+SpotifyPlaylists_Streams_Plot = ggplot(SpotifyPlaylists_Streams, aes(x = in_spotify_playlists, y = streams)) +
+  scale_y_continuous(
+    breaks = seq(0,2500000000, by = 500000000),
+    labels = c("0","500M", "1B", "1.5B", "2B", "2.5B")) +
+  scale_x_continuous(breaks = seq(0,60000, by = 10000)) +
+  xlab("Counts in Spotify Playlists") +
+  ylab("Streams") +
+  ggtitle("Streams When Found in a Spotify Playlist") +
+  geom_point()
+
+x1 <- SpotifyPlaylists_Streams$in_spotify_playlists 
+y1 <- SpotifyPlaylists_Streams$streams
+data1 <- data.frame(x1, y1)
+
+reg1<-lm(formula = y1 ~ x1, 
+         data=data1)
+
+#get intercept and slope value 
+coeff<-coefficients(reg1)           
+intercept = 232134017.82
+slope = 48278.31   
+
+# add the regression line 
+SpotifyPlaylists_Streams_Plot +
+  geom_abline(intercept = intercept, slope = slope, color="orange",  
+              linetype="dashed", linewidth=1)
+
+```
+
+This scatterplot displays a positive relationship between the number of Spotify music playlists the song is included in and the number of streams the respective song has.
+
+
+```{r BPM, echo=FALSE}
+#bpm compared to streams
+BPM_Streams = spotifyData %>% 
+  select(track_name, bpm, streams) %>% 
+  na.omit() %>% 
+  group_by(bpm) %>% 
+  summarise(meanstreams = mean(streams))
+#can't really see too much, correlation coefficient is 0, kinda surprised
+BPM_Streams_Plot = ggplot(BPM_Streams, aes(x = bpm, y = meanstreams)) +
+  scale_y_continuous(
+    breaks = seq(0,2500000000, by = 500000000),
+    labels = c("0","500M", "1B", "1.5B", "2B", "2.5B")) +
+  scale_x_continuous(breaks = seq(50,225, by = 25)) +
+  xlab("Beats Per Minute (BPM)") +
+  ylab("Streams") +
+  ggtitle("Average Streams per Beats Per Minute") +
+  geom_col()
+BPM_Streams_Plot
+```
+
+The bar chart displays the beats per minute (bpm), a measure of song tempo against the number of streams for each respective song.There is a strong bias towards the 175 bpm range, as well as 115 bpm range, in relation to popularity. 
+
+```{r AvgStreamsRelaseMonth, echo=FALSE}
+Month_Mean_Streams = spotifyData %>% 
+  select(released_month, streams) %>% 
+  na.omit() %>% 
+  group_by(released_month) %>% 
+  summarise(meanstreams = mean(streams))
+#plotting the mean streams for each month
+Month_Mean_Streams_Plot = ggplot(Month_Mean_Streams, aes(x = released_month, y = meanstreams)) +
+  scale_x_continuous(
+    breaks = seq(1,12, by = 1),
+    labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")) +
+  scale_y_continuous(
+    breaks = seq(100000000,700000000, by = 100000000),
+    labels = c("100M", "200M", "300M", "400M", "500M", "600M", "700M")) +
+  ylab("Average Streams") +
+  xlab("Release Month")+
+  ggtitle("Average Streams per Release Month") +
+  geom_col()
+Month_Mean_Streams_Plot
+
+```
+
+The bar charts displays the release month against the average amount of streams for each song during each respective month. The most popular release months are January and September.
+
+
+```{r ArtistCount_Streams, echo=FALSE}
+ArtistCount_Streams = spotifyData %>% 
+  select(artist_count, streams) %>% 
+  na.omit() %>% 
+  group_by(artist_count) %>% 
+  summarise(meanstreams = mean(streams))
+view(ArtistCount_Streams)
+#plotting the mean streams for each count
+ArtistCount_Streams_Plot = ggplot(ArtistCount_Streams, aes(x = artist_count, y = meanstreams)) +
+  scale_x_continuous(
+    breaks = seq(1,8, by = 1))+
+  scale_y_continuous(
+    breaks = seq(100000000,700000000, by = 100000000),
+    labels = c("100M", "200M", "300M", "400M", "500M", "600M", "700M")) +
+  ylab("Average Streams") +
+  xlab("Artist Count")+
+  ggtitle("Average Streams per Artist Count") +
+  annotate("text", x = 7, y = 400000000, label = "outlier") +
+  geom_col()
+ArtistCount_Streams_Plot
+
+```
+
+Lastly, the bar chart displays the average number of streams for the respective number of artists per song. There is a peak at 1 artist, then a steady decline until the artist count of 7, which would be considered an outlier. A very popular song, "We Don't Talk About Bruno" consists of seven artists and skews the data for the two songs with that characteristic.
+
+## Analysis and Results
+Based on our target variable and our research question, we compared the **linear regression** and **random forest** models to determine which model would have the best predictive accuracy. 
+
+The performance metric used to compare these models was the **mean squared error (MSE)**, which is defined as:
+$$
+MSE = \frac{1}{n}\sum_{i=1}^{n}(y_i-\hat{y_i})^2
+$$
+
+where :
+
+* $n$ = number of observations
+* $y_i$ = actual $y$ value
+* $\hat{y_i}$ = predicted $y$ value
+
+```{r model prep, include = FALSE}
+# Establish first training and test sets
+
+#set seed to ensure results are the same for collaborators
+set.seed(123)
+
+spotify_split_1 = initial_split(new_spotify, prop = 0.8, strata = streams)
+spotify_training_1 = training(spotify_split_1)
+spotify_testing_1 = testing(spotify_split_1)
+
+
+# Create recipe 
+spotify_recipe = spotify_training_1 %>%
+  recipe(streams ~ in_spotify_playlists + in_apple_playlists + bpm + released_month + artist_count) %>%
+  step_normalize(in_spotify_playlists, in_apple_playlists, bpm, artist_count) %>%
+  prep()
+
+
+# Create other training and test sets
+spotify_training_2 = juice(spotify_recipe)
+spotify_testing_2 = spotify_recipe %>% 
+  bake(spotify_testing_1)
+
+```
+
+### Determining Variable Importance
+In order to address the research question, it is important to determine variable importance, especially when using random forest models. 
+
+Selecting the variables `in_spotify_playlists`, `in_apple_playlists`, `bpm`, `released_month`, and `artist_count` as the predictors for a random forest model, we can determine their importance from the following table and plot:
+```{r variable importance, echo=FALSE}
+#establish base random forest for variable importance analysis
+#create random forest model based on full model
+set.seed(123)
+spotify_rf_1 <- rand_forest() %>%
+  set_engine("randomForest") %>%
+  set_mode(mode = "regression") %>%
+  fit(streams ~ in_spotify_playlists + in_apple_playlists + bpm + released_month + artist_count, data = spotify_training_2)
+
+#conduct variable importance analysis
+vi_rf = vi_model(spotify_rf_1)
+
+#create official table
+knitr::kable(
+  vi_rf, 
+  caption = "Variable Importance Table"
+)
+
+#display variable importance on graph
+vip(vi_rf, include_type = TRUE, all_permutations = TRUE,
+    geom = "point") +
+  ggtitle("Variable Importance Plot") +
+  xlab("Variable") +
+  ylab("Importance")
+
+```
+From these visualizations, the variables `in_spotify_playlists` and `in_apple_playlists` display the greatest importance to the random forest model. This means that the model relies on these two variables greatly to create the most accurate predictions. 
+
+In conclusion, we establish that the variables `in_spotify_playlists` and `in_apple_playlists` would impact the number of streams for, and thus the popularity of, a song the most.
+
+### Comparing the Models
+After analyzing the variable importance, the models were edited to include only the `in_spotify_playlists` and `in_apple_playlists` variables. The following results reflect this change.
+
+Applying the **random forest model** to the data produced following test MSE:
+```{r random forest model, echo = FALSE}
+#establish base random forest for variable importance analysis
+set.seed(123)
+spotify_rf_1 <- rand_forest() %>%
+  set_engine("randomForest") %>%
+  set_mode(mode = "regression") %>%
+  fit(streams ~ in_spotify_playlists + in_apple_playlists, data = spotify_training_2)
+
+spotify_pred_rf_1 <- spotify_rf_1 %>% 
+  predict(spotify_testing_2) %>% 
+  bind_cols(select(spotify_testing_2, streams, in_spotify_playlists, in_apple_playlists))
+
+#find the mean squared error
+spotify_rf_mse_1 = spotify_pred_rf_1 %>% 
+  summarise(MSE = mean((streams - .pred)^2))
+spotify_rf_mse_1
+```
+In comparison, applying the **linear regression model** to the data produced the following test MSE:
+```{r lin reg model, echo = FALSE}
+set.seed(123)
+spotify_linear = linear_reg() %>%
+  set_engine("lm") %>%
+  set_mode(mode = "regression") %>%
+  fit(streams ~ in_spotify_playlists + in_apple_playlists, data = spotify_training_2)
+
+spotify_pred_linear = spotify_linear %>% 
+  predict(spotify_testing_2) %>% 
+  bind_cols(select(spotify_testing_2, streams, in_spotify_playlists, in_apple_playlists))
+
+#find the mean squared error
+spotify_linear_mse = spotify_pred_linear %>% 
+  summarise(MSE = mean((streams - .pred)^2))
+spotify_linear_mse
+
+```
+Since the random forest model test MSE is lower than the linear regression test MSE, we determined that the random forest model will produce more accurate predictions than the linear regression model. Thus, we can conclude that the random forest model would be the better model for our data.
+
+
+## Conclusion
+
+### Summary of Findings
+All in all, we found that the data suggests a positive correlation between predictors `in_spotify_playlists` and `in_apple_playlists` and the target variable `streams`. We were also able to confirm that these two predictors do have a significant impact on `streams` by implementing the use of the random forest model and variable importance analysis.
+
+These insights imply that if the number of users who add a song to a Spotify or Apple Music playlist increases, the number of streams for that song also increases. 
+
+We pinpointed other patterns with variables `bpm`, `released_month`, and `artist_count`, but variable importance analysis was not able to confirm that these three predictors have a significant impact on `streams`.
+
+
+### Limitations
+This project was only able to test five different factors and their impact on streams, all factors from one data set. Because, we selected to use one data set, this limited the scope of data we had access to analyze. In addition, the data set in itself had its own credibility issues, due to `streams` being skewed towards spotify usage and questions about where the data is truly coming from.
+
+The sample size of our data was a limitation in that we are unsure if it is an accurate representation of the true population set, the most streamed songs. The data was last updated four months ago, which means that the data does not properly represent the data as of present-day. 
+
+
+### Potential Future Studies
+While not covered in our research, the results provoke further questions such as: What factors increase the likelihood of a user adding a song to their playlist? Do those factors impact the popularity that song? Does an artist's popularity impact a song's popularity, especially in regards to feature artists on a track? 
+
+Such questions could be investigated as an extension of this project, most likely requiring contributers to work with multiple, different data sets.
+
+
+## Contributions
+Katherine and Tyler worked on the data cleaning where they changed the types of the **streams**, **bpm**, and **key** columns. Furthermore, they wrangled the given data to find the average streams of particular variables like **bpm** and **release_month**. They additionally removed all the rows with a N/A with the `na.omit()` function and created the plots for these manipulations. All in all, Katherine and Tyler worked on the "Advanced Data Wrangling" and "Comprehensive Exploratory Data Analysis" tasks and completed the "Introduction," "Data," and "Visualizations" sections of the report.
+
+Audrey contributed to the project by creating the predictive model for what attribute will have the highest probability of making a song popular. She compared a linear regression model and a random forest model and used the mean squared error (MSE) to determine which model would be best to use for this project. She also applied variable importance analysis to the random forest model to determine which predictors have the greatest impact on determining the popularity of a song, addressing the research question for this project. Audrey worked on the "Advanced Modeling Building" and "Interpretation and Critical Analysis" tasks. In the context of the report, she completed the "Analysis and Results" and "Conclusion" sections.
